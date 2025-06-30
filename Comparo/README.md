@@ -45,6 +45,25 @@ pip install -r requirements.txt
 
 ---
 
+## API Keys & Environment Variables
+This project requires several API keys for external services. You should set these in a `.env` file in the `Comparo/` directory. Use the provided `.env.example` as a template.
+
+**Required API Keys:**
+- `GOOGLE_API_KEY` - For Google Generative AI (LLM)
+- `TAVILY_API_KEY` - For Tavily web search
+- `YOUTUBE_API_KEY` or `KEY` - For YouTube Data API (video search)
+
+**How to set up:**
+1. Copy `.env.example` to `.env` in the `Comparo/` directory:
+   ```bash
+   cp .env.example .env
+   ```
+2. Fill in your API keys in the `.env` file.
+
+> **Note:** The backend will not work without valid API keys. You can obtain these keys from the respective service providers.
+
+---
+
 ## Running the FastAPI Backend (API)
 1. **Navigate to the Comparo directory:**
    ```bash
