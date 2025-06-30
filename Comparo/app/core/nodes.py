@@ -237,32 +237,104 @@ Here is the product data to analyze:\n
         print(f"Error during product comparison: {e}")
         return {"best_product": {}, "comparison_report": "Comparison failed"}
 
+import re
+from datetime import timedelta
 
-def youtube_video_node(state : State):
-    best_product_name = state.get('best_product',{}).get('product_name', '')
+def parse_duration(duration_string):
+    """Parse ISO 8601 duration format (PT1M30S) to seconds"""
+    pattern = r'PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?'
+    match = re.match(pattern, duration_string)
+    if not match:
+        return 0
+    
+    hours = int(match.group(1) or 0)
+    minutes = int(match.group(2) or 0)
+    seconds = int(match.group(3) or 0)
+    
+    return hours * 3600 + minutes * 60 + seconds
+
+def youtube_video_node(state: State):
+    """Advanced version with better ranking algorithm"""
+    best_product_name = state.get('best_product', {}).get('product_name', '')
     if not best_product_name:
         print("No best product name found in state; skipping YouTube search.")
         return {'youtube_link': None}
+    
     try:
+        # Search for videos with better query
+        enhanced_query = f"{best_product_name} review OR unboxing OR demonstration"
+        
         search_response = youtube.search().list(
-            q=best_product_name,
+            q=enhanced_query,
             part='snippet',
             type='video',
-            maxResults=1
+            maxResults=25,
+            order='relevance'
         ).execute()
-
+        
         video_items = search_response.get("items", [])
         if not video_items:
             print("No YouTube videos found for the best product.")
             return {"youtube_link": None}
         
-        video_id = video_items[0]['id']['videoId']
-        youtube_link = f"https://www.youtube.com/watch?v={video_id}"
+        video_ids = [item['id']['videoId'] for item in video_items]
+        
+        video_details_response = youtube.videos().list(
+            part="contentDetails,statistics,snippet",
+            id=','.join(video_ids)
+        ).execute()
+        
+        scored_videos = []
+        
+        for video in video_details_response.get("items", []):
+            try:
+                duration_str = video['contentDetails']['duration']
+                duration_seconds = parse_duration(duration_str)
+                views = int(video['statistics'].get('viewCount', 0))
+                likes = int(video['statistics'].get('likeCount', 0))
+                video_id = video['id']
+                title = video['snippet']['title'].lower()
+                
+                # Skip inappropriate videos
+                if (duration_seconds < 60 or duration_seconds > 1800 or
+                    views < 100 or
+                    any(indicator in title for indicator in ['#shorts', 'short'])):
+                    continue
+                
+                # Calculate relevance score
+                relevance_keywords = ['review', 'unboxing', 'test', 'demonstration', 'vs', 'comparison']
+                relevance_score = sum(1 for keyword in relevance_keywords if keyword in title)
+                
+                # Combined score (views, likes, relevance, optimal duration)
+                duration_score = 1.0 if 300 <= duration_seconds <= 900 else 0.5  # Prefer 5-15 min videos
+                total_score = (views * 0.6 + likes * 0.3 + relevance_score * 1000 + duration_score * 1000)
+                
+                scored_videos.append({
+                    'video_id': video_id,
+                    'score': total_score,
+                    'views': views,
+                    'title': video['snippet']['title']
+                })
+                
+            except (KeyError, ValueError) as e:
+                continue
+        
+        if not scored_videos:
+            print("No suitable YouTube videos found after filtering.")
+            return {"youtube_link": None}
+        
+        # Sort by score and pick the best
+        scored_videos.sort(key=lambda x: x['score'], reverse=True)
+        best_video = scored_videos[0]
+        
+        youtube_link = f"https://www.youtube.com/watch?v={best_video['video_id']}"
+        print(f"Selected video: '{best_video['title']}' (Score: {best_video['score']:.0f})")
+        
         return {"youtube_link": youtube_link}
+        
     except Exception as e:
         print(f"Error during YouTube search: {e}")
         return {"youtube_link": None}
-
 
 def display_node(state: State):
   if "comparison" in state and state['comparison']:
